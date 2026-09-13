@@ -1,0 +1,65 @@
+# Maintainer: P.J. Grochowski <pawel.grochowski.dev@gmail.com>
+
+pkgname=libfprint-verimark-gen1-git
+_pkgname=libfprint
+pkgver=r3943.43f25633
+pkgrel=1
+pkgdesc="Custom libfprint with the driver for Kensington VeriMark (06cb:0088)"
+arch=('x86_64')
+url="https://gitlab.freedesktop.org/libfprint/libfprint"
+license=('LGPL2.1')
+depends=('libusb' 'glib2' 'nss' 'pixman' 'gobject-introspection' 'openssl')
+makedepends=('git' 'meson' 'ninja' 'cmake' 'pkgconf' 'gtk-doc' 'glib2-devel')
+provides=('libfprint' 'libfprint-2.so')
+conflicts=('libfprint')
+source=("git+https://gitlab.freedesktop.org/libfprint/libfprint.git"
+        "driver-verimark::git+https://github.com/pjgrochowski/Kensington_VeriMark_06cb-0088.git")
+md5sums=('SKIP' 'SKIP')
+options=('!strip')
+
+read -r -d '' _DRIVER_DEPENDENCIES << 'EOF'
+    'validity_0088': { 'helper': ['openssl'] },
+EOF
+read -r -d '' _DRIVER_SOURCES << 'EOF'
+    'validity_0088': [
+        'drivers/validity-0088/validity.c',
+        'drivers/validity-0088/validity-capture-builder.c',
+        'drivers/validity-0088/validity-commands.c',
+        'drivers/validity-0088/validity-crypto.c',
+        'drivers/validity-0088/validity-handshake.c',
+        'drivers/validity-0088/validity-init-data.c',
+        'drivers/validity-0088/validity-init-clean-slate.c',
+        'drivers/validity-0088/validity-enroll-data.c',
+        'drivers/validity-0088/validity-pairing.c',
+        'drivers/validity-0088/validity-pretls-pair.c',
+        'drivers/validity-0088/validity-pubkeys.c'
+    ],
+EOF
+
+prepare() {
+  local DIR_DRIVER_TARGET="$srcdir/libfprint/libfprint/drivers/validity-0088"
+
+  # Copy driver source into 'libfprint' source:
+  mkdir -pv "$DIR_DRIVER_TARGET"
+  cp -rfv "$srcdir/driver-verimark/drivers/validity-0088/"* "$DIR_DRIVER_TARGET"
+
+  # Add driver dependency list to meson:
+  sed -i "/drivers_info = {/r"<(echo "$_DRIVER_DEPENDENCIES") "$srcdir/libfprint/meson.build"
+
+  # Add driver source map to meson:
+  sed -i "/driver_sources = {/r"<(echo "$_DRIVER_SOURCES") "$srcdir/libfprint/libfprint/meson.build"
+}
+
+build() {
+  cd "$srcdir/libfprint"
+  # arch-meson . build -Ddrivers=synaptics,validity_0088 -Ddoc=false -Dc_link_args=-lcrypto
+  arch-meson . build -Ddrivers=validity_0088 -Ddoc=false
+}
+
+package() {
+  cd "$srcdir/libfprint"
+  DESTDIR="$pkgdir" meson install -C build
+
+  # Install udev rule:
+  install -Dm644 "$srcdir/driver-verimark/packaging/70-vmark.rules" "$pkgdir/etc/udev/rules.d/70-vmark.rules"
+}
